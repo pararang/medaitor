@@ -28,8 +28,10 @@ type Message struct {
 	Token    string `json:"token"`
 }
 
-var clients = make(map[*websocket.Conn]string)
-var healthy int32
+var (
+	clients = make(map[*websocket.Conn]string)
+	healthy = int32(1)
+)
 
 func healthCheck(w http.ResponseWriter, r *http.Request) {
 	if atomic.LoadInt32(&healthy) == 1 {
@@ -39,27 +41,14 @@ func healthCheck(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusServiceUnavailable)
 }
 
-func logging(logger *log.Logger) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			defer func() {
-				logger.Println(r.Method, r.URL.Path, r.RemoteAddr, r.UserAgent())
-			}()
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-
 func main() {
 	err := db.Initialize()
 	if err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
 
-	defer db.Close()
-
 	router := pat.New()
+	router.Get("/health", healthCheck)
 	router.Post("/register", handleRegister)
 	router.Post("/login", handleLogin)
 	router.Get("/messages", handleMessages)
@@ -78,19 +67,20 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	// set server to healthy
-	atomic.StoreInt32(&healthy, 1)
 	go func() {
 		<-quit
 		log.Println("Server is shutting down ....")
 		atomic.StoreInt32(&healthy, 0)
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		db.Close()
 
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
+
 		server.SetKeepAlivesEnabled(false)
 		if err := server.Shutdown(ctx); err != nil {
 			log.Fatalf("Could not gracefully shutdown the server %+v\n", err)
 		}
+
 		close(done)
 	}()
 

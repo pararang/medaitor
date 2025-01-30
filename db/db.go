@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -47,6 +48,10 @@ func Initialize() error {
 }
 
 func Close() {
+	defer func (){
+		log.Println("db closed")
+	}()
+	
 	db.Close()
 }
 
