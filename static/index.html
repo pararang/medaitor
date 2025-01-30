@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html data-theme="dark">
+<html data-theme="cupcake">
 <head>
     <title>Go Chat</title>
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.2/dist/full.min.css" rel="stylesheet">
@@ -172,11 +172,17 @@
                 <div class="flex items-center gap-2 ${isSelf ? 'message-self' : 'message-other'}">
                     ${
                         isSelf ? 
-                        `<div class="chat-bubble chat-bubble-primary">${content}</div>
-                        <span class="font-bold text-primary">${username}</span>` 
+                        `<div class="chat chat-end">
+                            <div class="chat-bubble chat-bubble-primary">${content}</div>
+                        </div>`
                         :
-                        `<span class="font-bold text-primary">${username}</span>
-                        <div class="chat-bubble bg-base-300">${content}</div>`
+                        `<div class="chat chat-start">
+                            <div class="chat-header">
+                                ${username}
+                                <time class="text-xs opacity-50">2 hours ago</time> //TODO add dinamic time
+                            </div>
+                            <div class="chat-bubble chat-bubble-primary">${content}</div>
+                        </div>`
                     }
                 </div>
             `;
