@@ -1,71 +1,92 @@
 <!DOCTYPE html>
-<html>
-
+<html data-theme="dark">
 <head>
     <title>Go Chat</title>
-    <style>
-        body {
-            font-family: Arial;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.2/dist/full.min.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    
+    <body class="min-h-screen p-8 bg-base-200">
+        <div class="card w-96 mx-auto bg-base-100 shadow-xl" id="login">
+            <div class="card-body">
+                <h2 class="card-title">Enter Your Name</h2>
+                <input type="text" id="username" placeholder="Username" class="input input-bordered">
+                <div class="card-actions justify-end mt-4">
+                    <button onclick="connect()" class="btn btn-primary">Join Chat</button>
+                </div>
+            </div>
+        </div>
 
-        #messages {
-            border: 1px solid #ccc;
-            padding: 10px;
-            height: 400px;
-            overflow-y: scroll;
-            margin-bottom: 10px;
-        }
-
-        input {
-            width: 80%;
-            padding: 8px;
-        }
-
-        button {
-            width: 18%;
-            padding: 8px;
-        }
-    </style>
-</head>
-
-<body>
-    <div id="messages"></div>
-    <form id="messageForm">
-        <input type="text" id="messageInput" placeholder="Type your message...">
-        <button type="submit">Send</button>
-    </form>
+    <div id="chat" class="hidden">
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <div id="messages" class="h-96 overflow-y-auto space-y-2"></div>
+                <div class="join w-full mt-4">
+                    <input type="text" id="message" class="input input-bordered join-item flex-1"
+                        placeholder="Type a message" onkeypress="if(event.keyCode===13) sendMessage()">
+                    <button onclick="sendMessage()" class="btn btn-primary join-item">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script>
-        const ws = new WebSocket('ws://localhost:8080/ws')
-        const form = document.getElementById('messageForm')
-        const input = document.getElementById('messageInput')
-        const messagesDiv = document.getElementById('messages')
+        let ws;
+        let username;
 
-        // Handle message reception
-        ws.onmessage = (event) => {
-            const msg = JSON.parse(event.data)
-            messagesDiv.innerHTML += `
-                <div><strong>${msg.username}</strong>: ${msg.content}</div>
-            `
-            messagesDiv.scrollTop = messagesDiv.scrollHeight
+            function connect() {
+                username = document.getElementById('username').value.trim();
+                if (!username) return;
+
+            ws = new WebSocket('ws://localhost:8080/ws');
+
+            ws.onmessage = (e) => {
+                const msg = JSON.parse(e.data);
+                console.log('Received:', msg);
+
+                switch (msg.type) {
+                    case 'auth_request':
+                        ws.send(JSON.stringify({
+                            type: "auth",
+                            username: username
+                        }));
+                        break;
+            
+                    case 'auth_success':
+                        document.getElementById('login').classList.add('hidden');
+                        document.getElementById('chat').classList.remove('hidden');
+                        break;
+                    
+                    case 'message':
+                        appendMessage(msg.username, msg.content);
+                        break;
+                }
+            };
         }
 
-        // Handle message sending
-        form.onsubmit = (e) => {
-            e.preventDefault()
-            if (input.value) {
-                const username = prompt("Enter your name:") || "Anonymous"
+            function sendMessage() {
+                const input = document.getElementById('message');
+                const content = input.value.trim();
+
+                if (content && ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
-                    username: username,
-                    content: input.value
-                }))
-                input.value = ''
+                    type: "message",
+                    content: content
+                }));
+                input.value = '';
             }
+            }
+
+            function appendMessage(user, text) {
+                const messages = document.getElementById('messages');
+                messages.innerHTML += `
+                <div class="chat chat-start">
+                    <div class="chat-header text-primary font-bold">${user}</div>
+                    <div class="chat-bubble bg-base-300">${text}</div>
+                </div>
+            `;
+                messages.scrollTop = messages.scrollHeight;
         }
     </script>
 </body>
-
 </html>

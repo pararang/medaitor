@@ -11,50 +11,55 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-var clients = make(map[*websocket.Conn]bool)
+var clients = make(map[*websocket.Conn]string)
 var broadcast = make(chan Message)
 
 type Message struct {
+	Type     string `json:"type"`
 	Username string `json:"username"`
 	Content  string `json:"content"`
 }
 
 func main() {
-	// Add this line to serve static files
 	http.Handle("/", http.FileServer(http.Dir("./static")))
-
 	http.HandleFunc("/ws", handleConnections)
 	go handleMessages()
-
-	log.Println("Server starting on :8080")
-	err := http.ListenAndServe(":8080", nil)
-	if err != nil {
-		log.Fatal("Server error: ", err)
-	}
+	
+	log.Println("Server running on :8080")
+	http.ListenAndServe(":8080", nil)
 }
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
-	// Upgrade initial GET request to WebSocket
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Fatal("WebSocket upgrade error:", err)
+		log.Fatal(err)
 	}
-	defer func() {
-		ws.Close()
-		delete(clients, ws)
-	}()
+	defer ws.Close()
 
-	clients[ws] = true // Add client to map
+	// Auth handshake
+	ws.WriteJSON(Message{Type: "auth_request"})
+	
+	var authMsg Message
+	if err := ws.ReadJSON(&authMsg); err != nil || authMsg.Type != "auth" || authMsg.Username == "" {
+		ws.WriteJSON(Message{Type: "auth_failed"})
+		return
+	}
 
-	// Continuous message reading
+	clients[ws] = authMsg.Username
+	ws.WriteJSON(Message{Type: "auth_success"})
+
+	// Message loop
 	for {
 		var msg Message
-		err := ws.ReadJSON(&msg)
-		if err != nil {
-			log.Printf("Read error: %v", err)
+		if err := ws.ReadJSON(&msg); err != nil {
+			delete(clients, ws)
 			break
 		}
-		broadcast <- msg
+
+		if msg.Type == "message" {
+			msg.Username = clients[ws]
+			broadcast <- msg
+		}
 	}
 }
 
@@ -64,7 +69,6 @@ func handleMessages() {
 		for client := range clients {
 			err := client.WriteJSON(msg)
 			if err != nil {
-				log.Printf("Write error: %v", err)
 				client.Close()
 				delete(clients, client)
 			}
