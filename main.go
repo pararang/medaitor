@@ -26,10 +26,15 @@ type Message struct {
 	Username string `json:"username"`
 	Content  string `json:"content"`
 	Token    string `json:"token"`
+	IsSelf   bool   `json:"is_self"`
+}
+
+type Identity struct {
+	Username string
 }
 
 var (
-	clients = make(map[*websocket.Conn]string)
+	clients = make(map[*websocket.Conn]Identity)
 	healthy = int32(1)
 )
 
@@ -147,16 +152,33 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Println("auth", auth)
+
 	userID, username, err := db.ValidateSession(auth.Token)
 	if err != nil {
 		ws.WriteJSON(Message{Type: "auth_failed"})
 		return
 	}
 
-	clients[ws] = auth.Token
+	clients[ws] = Identity{
+		Username: username,
+	}
+
 	defer delete(clients, ws)
 
 	ws.WriteJSON(Message{Type: "auth_success", Username: username})
+	broadcastMessage(Message{
+		Type:     "user_join",
+		Username: username,
+	})
+
+	// Handle client disconnection
+	defer func() {
+		broadcastMessage(Message{
+			Type:     "user_leave",
+			Username: username,
+		})
+	}()
 
 	for {
 		var msg Message
@@ -178,7 +200,8 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func broadcastMessage(msg Message) {
-	for client := range clients {
+	for client, identity := range clients {
+		msg.IsSelf = identity.Username == msg.Username
 		if err := client.WriteJSON(msg); err != nil {
 			client.Close()
 			delete(clients, client)

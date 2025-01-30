@@ -121,9 +121,26 @@
                         loadHistory(msg.username);
                         break;
                     case 'message':
-                        appendMessage(msg.username, msg.content, true);
+                        appendMessage(msg.username, msg.content, msg.is_self);
+                        break;
+                    case 'user_join':
+                        if (!msg.is_self) { //Allow login on other clients, need to prevent mulitple sessions
+                            appendSystemMessage(`${msg.username} joined the chat`);
+                        }
+                        break;
+                    case 'user_leave':
+                        if (!msg.is_self) {
+                            appendSystemMessage(`${msg.username} left the chat`);
+                        }
                         break;
                 }
+            };
+
+            window.onbeforeunload = () => {
+                ws.send(JSON.stringify({
+                    type: "user_leave",
+                    username: username
+                }));
             };
         }
 
@@ -156,11 +173,21 @@
                     ${
                         isSelf ? 
                         `<div class="chat-bubble chat-bubble-primary">${content}</div>
-                         <span class="font-bold text-primary">${username}</span>` 
+                        <span class="font-bold text-primary">${username}</span>` 
                         :
                         `<span class="font-bold text-primary">${username}</span>
-                         <div class="chat-bubble bg-base-300">${content}</div>`
+                        <div class="chat-bubble bg-base-300">${content}</div>`
                     }
+                </div>
+            `;
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function appendSystemMessage(content) {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML += `
+                <div class="flex justify-center my-2">
+                    <div class="text-sm text-gray-400 italic">${content}</div>
                 </div>
             `;
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
