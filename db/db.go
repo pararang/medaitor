@@ -10,27 +10,9 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type User struct {
-	ID       int
-	Username string
-	Password string
-}
-
-type Session struct {
-	Token     string
-	UserID    int
-	ExpiresAt time.Time
-}
-
-type DBMessage struct {
-	Username  string    `json:"username"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
 var db *sql.DB
 
-func InitializeDB() {
+func Initialize() {
 	var err error
 	db, err = sql.Open("sqlite", "file:chat.db?_fk=true")
 	if err != nil {
@@ -62,7 +44,7 @@ func InitializeDB() {
 	}
 }
 
-func CloseDB() {
+func Close() {
 	db.Close()
 }
 
@@ -106,7 +88,7 @@ func LoginUser(username, password string) (string, error) {
 	return tokenStr, nil
 }
 
-func ValidateWebSocketAuth(token string) (int, string, error) {
+func ValidateSession(token string) (int, string, error) {
 	var userID int
 	var username string
 	var expires time.Time
@@ -129,7 +111,7 @@ func StoreMessage(userID int, content string) error {
 	return err
 }
 
-func GetMessageHistory(userID int) ([]DBMessage, error) {
+func GetMessageHistory(userID int) ([]Message, error) {
 	rows, err := db.Query(`
 		SELECT u.username, m.content, m.created_at 
 		FROM messages m
@@ -142,9 +124,9 @@ func GetMessageHistory(userID int) ([]DBMessage, error) {
 	}
 	defer rows.Close()
 
-	var messages []DBMessage
+	var messages []Message
 	for rows.Next() {
-		var msg DBMessage
+		var msg Message
 		rows.Scan(&msg.Username, &msg.Content, &msg.CreatedAt)
 		messages = append(messages, msg)
 	}

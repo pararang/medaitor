@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/gorilla/pat"
 	"github.com/gorilla/websocket"
 	"github.com/pararang/medaitor/db"
 )
@@ -23,25 +24,24 @@ type Message struct {
 var clients = make(map[*websocket.Conn]string)
 
 func main() {
-	db.InitializeDB()
-	defer db.CloseDB()
+	db.Initialize()
+	defer db.Close()
 
-	http.Handle("/", http.FileServer(http.Dir("./static")))
-	http.HandleFunc("/register", handleRegister)
-	http.HandleFunc("/login", handleLogin)
-	http.HandleFunc("/messages", handleMessages)
-	http.HandleFunc("/ws", handleWebSocket)
+	router := pat.New()
+
+	router.Handle("/", http.FileServer(http.Dir("./static")))
+	router.Post("/register", handleRegister)
+	router.Post("/login", handleLogin)
+	router.Get("/messages", handleMessages)
+	router.Handle("/ws", http.HandlerFunc(handleWebSocket))
+
+	http.Handle("/", router)
 	
 	log.Println("Server running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
 func handleRegister(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
@@ -54,11 +54,6 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
@@ -101,7 +96,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, username, err := db.ValidateWebSocketAuth(auth.Token)
+	userID, username, err := db.ValidateSession(auth.Token)
 	if err != nil {
 		ws.WriteJSON(Message{Type: "auth_failed"})
 		return
