@@ -4,26 +4,36 @@
     <title>Go Chat</title>
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.2/dist/full.min.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    </head>
-    
-    <body class="min-h-screen p-8 bg-base-200">
-        <div class="card w-96 mx-auto bg-base-100 shadow-xl" id="login">
-            <div class="card-body">
-                <h2 class="card-title">Enter Your Name</h2>
-                <input type="text" id="username" placeholder="Username" class="input input-bordered">
-                <div class="card-actions justify-end mt-4">
-                    <button onclick="connect()" class="btn btn-primary">Join Chat</button>
-                </div>
+</head>
+<body class="min-h-screen p-8 bg-base-200">
+    <div class="card w-96 mx-auto bg-base-100 shadow-xl" id="authSection">
+        <div class="card-body">
+            <div class="tabs">
+                <button class="tab tab-active" onclick="showTab('login')">Login</button> 
+                <button class="tab" onclick="showTab('register')">Register</button>
+            </div>
+            
+            <div id="login" class="space-y-4">
+                <input type="text" id="loginUser" placeholder="Username" class="input input-bordered w-full">
+                <input type="password" id="loginPass" placeholder="Password" class="input input-bordered w-full">
+                <button onclick="login()" class="btn btn-primary w-full">Login</button>
+            </div>
+
+            <div id="register" class="hidden space-y-4">
+                <input type="text" id="regUser" placeholder="Username" class="input input-bordered w-full">
+                <input type="password" id="regPass" placeholder="Password" class="input input-bordered w-full">
+                <button onclick="register()" class="btn btn-secondary w-full">Register</button>
             </div>
         </div>
+    </div>
 
-    <div id="chat" class="hidden">
+    <div id="chatSection" class="hidden">
         <div class="card bg-base-100 shadow-xl">
             <div class="card-body">
                 <div id="messages" class="h-96 overflow-y-auto space-y-2"></div>
-                <div class="join w-full mt-4">
-                    <input type="text" id="message" class="input input-bordered join-item flex-1"
-                        placeholder="Type a message" onkeypress="if(event.keyCode===13) sendMessage()">
+                <div class="join w-full">
+                    <input type="text" id="messageInput" class="input input-bordered join-item flex-1" 
+                           placeholder="Type a message" onkeypress="if(event.keyCode===13) sendMessage()">
                     <button onclick="sendMessage()" class="btn btn-primary join-item">Send</button>
                 </div>
             </div>
@@ -32,31 +42,78 @@
 
     <script>
         let ws;
-        let username;
+        let token;
 
-            function connect() {
-                username = document.getElementById('username').value.trim();
-                if (!username) return;
+        function showTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('tab-active'));
+            document.querySelectorAll('[id="login"], [id="register"]').forEach(t => t.classList.add('hidden'));
+            document.getElementById(tab).classList.remove('hidden');
+            event.target.classList.add('tab-active');
+        }
 
+        async function login() {
+            const username = document.getElementById('loginUser').value.trim();
+            const password = document.getElementById('loginPass').value.trim();
+            if (!username || !password) return;
+
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ username, password })
+                });
+
+                if (!response.ok) throw new Error('Login failed');
+                
+                token = await response.text();
+                initializeChat();
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        async function register() {
+            const username = document.getElementById('regUser').value.trim();
+            const password = document.getElementById('regPass').value.trim();
+            if (!username || !password) return;
+
+            try {
+                const response = await fetch('/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ username, password })
+                });
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error);
+                }
+                
+                alert('Registration successful! Please login.');
+                showTab('login');
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        function initializeChat() {
             ws = new WebSocket('ws://localhost:8080/ws');
+            
+            ws.onopen = () => {
+                ws.send(JSON.stringify({
+                    type: "auth",
+                    token: token
+                }));
+                document.getElementById('authSection').classList.add('hidden');
+                document.getElementById('chatSection').classList.remove('hidden');
+            };
 
             ws.onmessage = (e) => {
                 const msg = JSON.parse(e.data);
-                console.log('Received:', msg);
-
-                switch (msg.type) {
-                    case 'auth_request':
-                        ws.send(JSON.stringify({
-                            type: "auth",
-                            username: username
-                        }));
-                        break;
-            
+                switch(msg.type) {
                     case 'auth_success':
-                        document.getElementById('login').classList.add('hidden');
-                        document.getElementById('chat').classList.remove('hidden');
+                        loadHistory();
                         break;
-                    
                     case 'message':
                         appendMessage(msg.username, msg.content);
                         break;
@@ -64,28 +121,39 @@
             };
         }
 
-            function sendMessage() {
-                const input = document.getElementById('message');
-                const content = input.value.trim();
+        async function loadHistory() {
+            try {
+                const response = await fetch(`/messages?token=${encodeURIComponent(token)}`);
+                const messages = await response.json();
+                messages.forEach(msg => appendMessage(msg.username, msg.content));
+            } catch (error) {
+                console.error('Failed to load history:', error);
+            }
+        }
 
-                if (content && ws && ws.readyState === WebSocket.OPEN) {
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const content = input.value.trim();
+            if (content && ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     type: "message",
                     content: content
                 }));
                 input.value = '';
             }
-            }
+        }
 
-            function appendMessage(user, text) {
-                const messages = document.getElementById('messages');
-                messages.innerHTML += `
-                <div class="chat chat-start">
-                    <div class="chat-header text-primary font-bold">${user}</div>
-                    <div class="chat-bubble bg-base-300">${text}</div>
+        function appendMessage(username, content) {
+            const messagesDiv = document.getElementById('messages');
+            const isSelf = username === document.getElementById('loginUser').value.trim();
+            
+            messagesDiv.innerHTML += `
+                <div class="chat ${isSelf ? 'chat-end' : 'chat-start'}">
+                    <div class="chat-header">${username}</div>
+                    <div class="chat-bubble ${isSelf ? 'chat-bubble-primary' : 'bg-base-300'}">${content}</div>
                 </div>
             `;
-                messages.scrollTop = messages.scrollHeight;
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
     </script>
 </body>
