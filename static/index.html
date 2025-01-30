@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Go Chat</title>
+    <style>
+        body {
+            font-family: Arial;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        #messages {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 400px;
+            overflow-y: scroll;
+            margin-bottom: 10px;
+        }
+
+        input {
+            width: 80%;
+            padding: 8px;
+        }
+
+        button {
+            width: 18%;
+            padding: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="messages"></div>
+    <form id="messageForm">
+        <input type="text" id="messageInput" placeholder="Type your message...">
+        <button type="submit">Send</button>
+    </form>
+
+    <script>
+        const ws = new WebSocket('ws://localhost:8080/ws')
+        const form = document.getElementById('messageForm')
+        const input = document.getElementById('messageInput')
+        const messagesDiv = document.getElementById('messages')
+
+        // Handle message reception
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data)
+            messagesDiv.innerHTML += `
+                <div><strong>${msg.username}</strong>: ${msg.content}</div>
+            `
+            messagesDiv.scrollTop = messagesDiv.scrollHeight
+        }
+
+        // Handle message sending
+        form.onsubmit = (e) => {
+            e.preventDefault()
+            if (input.value) {
+                const username = prompt("Enter your name:") || "Anonymous"
+                ws.send(JSON.stringify({
+                    username: username,
+                    content: input.value
+                }))
+                input.value = ''
+            }
+        }
+    </script>
+</body>
+
+</html>
