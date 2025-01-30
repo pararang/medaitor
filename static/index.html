@@ -4,6 +4,10 @@
     <title>Go Chat</title>
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.2/dist/full.min.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .message-self { justify-content: flex-end; }
+        .message-other { justify-content: flex-start; }
+    </style>
 </head>
 <body class="min-h-screen p-8 bg-base-200">
     <div class="card w-96 mx-auto bg-base-100 shadow-xl" id="authSection">
@@ -30,7 +34,9 @@
     <div id="chatSection" class="hidden">
         <div class="card bg-base-100 shadow-xl">
             <div class="card-body">
-                <div id="messages" class="h-96 overflow-y-auto space-y-2"></div>
+                <div id="messages" class="h-96 overflow-y-auto space-y-2 p-4">
+                    <!-- Messages will be inserted here -->
+                </div>
                 <div class="join w-full">
                     <input type="text" id="messageInput" class="input input-bordered join-item flex-1" 
                            placeholder="Type a message" onkeypress="if(event.keyCode===13) sendMessage()">
@@ -112,20 +118,20 @@
                 const msg = JSON.parse(e.data);
                 switch(msg.type) {
                     case 'auth_success':
-                        loadHistory();
+                        loadHistory(msg.username);
                         break;
                     case 'message':
-                        appendMessage(msg.username, msg.content);
+                        appendMessage(msg.username, msg.content, true);
                         break;
                 }
             };
         }
 
-        async function loadHistory() {
+        async function loadHistory(me) {
             try {
                 const response = await fetch(`/messages?token=${encodeURIComponent(token)}`);
                 const messages = await response.json();
-                messages.forEach(msg => appendMessage(msg.username, msg.content));
+                messages.forEach(msg => appendMessage(msg.username, msg.content, msg.username === me));
             } catch (error) {
                 console.error('Failed to load history:', error);
             }
@@ -143,14 +149,18 @@
             }
         }
 
-        function appendMessage(username, content) {
+        function appendMessage(username, content, isSelf) {
             const messagesDiv = document.getElementById('messages');
-            const isSelf = username === document.getElementById('loginUser').value.trim();
-            
             messagesDiv.innerHTML += `
-                <div class="chat ${isSelf ? 'chat-end' : 'chat-start'}">
-                    <div class="chat-header">${username}</div>
-                    <div class="chat-bubble ${isSelf ? 'chat-bubble-primary' : 'bg-base-300'}">${content}</div>
+                <div class="flex items-center gap-2 ${isSelf ? 'message-self' : 'message-other'}">
+                    ${
+                        isSelf ? 
+                        `<div class="chat-bubble chat-bubble-primary">${content}</div>
+                         <span class="font-bold text-primary">${username}</span>` 
+                        :
+                        `<span class="font-bold text-primary">${username}</span>
+                         <div class="chat-bubble bg-base-300">${content}</div>`
+                    }
                 </div>
             `;
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
