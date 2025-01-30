@@ -1,10 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"sync/atomic"
+	"syscall"
+	"time"
 
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/pat"
 	"github.com/gorilla/websocket"
 	"github.com/pararang/medaitor/db"
@@ -22,23 +29,77 @@ type Message struct {
 }
 
 var clients = make(map[*websocket.Conn]string)
+var healthy int32
+
+func healthCheck(w http.ResponseWriter, r *http.Request) {
+	if atomic.LoadInt32(&healthy) == 1 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.WriteHeader(http.StatusServiceUnavailable)
+}
+
+func logging(logger *log.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				logger.Println(r.Method, r.URL.Path, r.RemoteAddr, r.UserAgent())
+			}()
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 
 func main() {
-	db.Initialize()
+	err := db.Initialize()
+	if err != nil {
+		log.Fatal("Failed to initialize database:", err)
+	}
+
 	defer db.Close()
 
 	router := pat.New()
-
-	router.Handle("/", http.FileServer(http.Dir("./static")))
 	router.Post("/register", handleRegister)
 	router.Post("/login", handleLogin)
 	router.Get("/messages", handleMessages)
+	router.Handle("/", http.FileServer(http.Dir("./static")))
 	router.Handle("/ws", http.HandlerFunc(handleWebSocket))
 
-	http.Handle("/", router)
-	
-	log.Println("Server running on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	server := &http.Server{
+		Addr:         ":8080",
+		Handler:      handlers.LoggingHandler(os.Stdout, handlers.CompressHandler(router)),
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  15 * time.Second,
+	}
+
+	done := make(chan bool)
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	// set server to healthy
+	atomic.StoreInt32(&healthy, 1)
+	go func() {
+		<-quit
+		log.Println("Server is shutting down ....")
+		atomic.StoreInt32(&healthy, 0)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+		defer cancel()
+		server.SetKeepAlivesEnabled(false)
+		if err := server.Shutdown(ctx); err != nil {
+			log.Fatalf("Could not gracefully shutdown the server %+v\n", err)
+		}
+		close(done)
+	}()
+
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("Could not listen on :8080 %+v\n", err)
+	}
+
+	<-done
+	log.Println("Server stopped")
 }
 
 func handleRegister(w http.ResponseWriter, r *http.Request) {

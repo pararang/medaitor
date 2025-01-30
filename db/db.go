@@ -3,7 +3,7 @@ package db
 import (
 	"database/sql"
 	"errors"
-	"log"
+	"fmt"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -12,11 +12,11 @@ import (
 
 var db *sql.DB
 
-func Initialize() {
+func Initialize() error {
 	var err error
 	db, err = sql.Open("sqlite", "file:chat.db?_fk=true")
 	if err != nil {
-		log.Fatal("Database connection failed:", err)
+		return fmt.Errorf("failed to open database: %w", err)
 	}
 
 	_, err = db.Exec(`
@@ -40,8 +40,10 @@ func Initialize() {
 		);
 	`)
 	if err != nil {
-		log.Fatal("Database initialization failed:", err)
+		return fmt.Errorf("Database initialization failed: %w", err)
 	}
+
+	return nil
 }
 
 func Close() {
