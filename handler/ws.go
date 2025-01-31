@@ -3,19 +3,49 @@ package handler
 import (
 	"log"
 	"net/http"
+	"sync"
 
+	"github.com/gorilla/websocket"
 	"github.com/pararang/medaitor/db"
 )
 
+// wsClientConnection wraps websocket connection with a mutex for thread-safe writes
+type wsClientConnection struct {
+	conn     *websocket.Conn
+	writeMux sync.Mutex
+}
+
+func (c *wsClientConnection) WriteJSON(v interface{}) error {
+	c.writeMux.Lock()
+	defer c.writeMux.Unlock()
+	return c.conn.WriteJSON(v)
+}
+
+func (c *wsClientConnection) Close() error {
+	c.writeMux.Lock()
+	defer c.writeMux.Unlock()
+	return c.conn.Close()
+}
+
+var (
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+
+	clients = sync.Map{}
+)
+
 func WebSocket(w http.ResponseWriter, r *http.Request) {
-	ws, err := upgrader.Upgrade(w, r, nil)
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
+
+	ws := &wsClientConnection{conn: conn}
 	defer ws.Close()
 
 	var auth Message
-	if err := ws.ReadJSON(&auth); err != nil || auth.Type != "auth" {
+	if err := conn.ReadJSON(&auth); err != nil || auth.Type != "auth" {
 		ws.WriteJSON(Message{Type: "auth_failed"})
 		return
 	}
@@ -28,11 +58,15 @@ func WebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clients[ws] = Identity{
-		Username: username,
-	}
+	clients.Store(ws, Identity{Username: username})
 
-	defer delete(clients, ws)
+	defer func() {
+		clients.Delete(ws)
+		broadcastMessage(Message{
+			Type:     "user_leave",
+			Username: username,
+		})
+	}()
 
 	ws.WriteJSON(Message{Type: "auth_success", Username: username})
 	broadcastMessage(Message{
@@ -40,17 +74,9 @@ func WebSocket(w http.ResponseWriter, r *http.Request) {
 		Username: username,
 	})
 
-	// Handle client disconnection
-	defer func() {
-		broadcastMessage(Message{
-			Type:     "user_leave",
-			Username: username,
-		})
-	}()
-
 	for {
 		var msg Message
-		if err := ws.ReadJSON(&msg); err != nil {
+		if err := conn.ReadJSON(&msg); err != nil {
 			break
 		}
 
@@ -68,11 +94,14 @@ func WebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 func broadcastMessage(msg Message) {
-	for client, identity := range clients {
+	clients.Range(func(key, value interface{}) bool {
+		ws := key.(*wsClientConnection)
+		identity := value.(Identity)
 		msg.IsSelf = identity.Username == msg.Username
-		if err := client.WriteJSON(msg); err != nil {
-			client.Close()
-			delete(clients, client)
+		if err := ws.WriteJSON(msg); err != nil {
+			ws.Close()
+			clients.Delete(ws)
 		}
-	}
+		return true
+	})
 }

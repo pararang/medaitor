@@ -2,8 +2,6 @@ package handler
 
 import (
 	"net/http"
-
-	"github.com/gorilla/websocket"
 )
 
 type Message struct {
@@ -17,14 +15,6 @@ type Message struct {
 type Identity struct {
 	Username string
 }
-
-var (
-	upgrader = websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true },
-	}
-
-	clients = make(map[*websocket.Conn]Identity)
-)
 
 func handleDBError(w http.ResponseWriter, err error) {
 	switch err.Error() {
