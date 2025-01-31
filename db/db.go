@@ -20,6 +20,8 @@ func Initialize() error {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 
+	log.Println("Database connection opened")
+
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,18 +43,16 @@ func Initialize() error {
 		);
 	`)
 	if err != nil {
-		return fmt.Errorf("Database initialization failed: %w", err)
+		return fmt.Errorf("database initialization failed: %w", err)
 	}
+
+	log.Println("Database initialization successful")
 
 	return nil
 }
 
-func Close() {
-	defer func (){
-		log.Println("db closed")
-	}()
-	
-	db.Close()
+func Close() error {
+	return db.Close()
 }
 
 func RegisterUser(username, password string) error {
