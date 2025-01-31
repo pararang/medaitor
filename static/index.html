@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html data-theme="cupcake">
 <head>
-    <title>Go Chat</title>
+    <title>Medaitor GLobal Chat</title>
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.2/dist/full.min.css" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -46,72 +46,119 @@
         </div>
     </div>
 
+    <script src="https://code.jquery.com/jquery-3.6.1.min.js"></script>
     <script>
         let ws;
         let token;
 
-        function showTab(tab) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('tab-active'));
-            document.querySelectorAll('[id="login"], [id="register"]').forEach(t => t.classList.add('hidden'));
-            document.getElementById(tab).classList.remove('hidden');
-            event.target.classList.add('tab-active');
-        }
+        $(document).ready(function() {
+            $('.tab').click(function() {
+                // add class tab-active to the clicked element
+                // remove class tab-active from all siblings of the clicked element
+                $(this).addClass('tab-active').siblings().removeClass('tab-active');
+            });
+
+            $('#messageInput').keypress(function(event) {
+                if (event.keyCode === 13) {
+                    sendMessage();
+                }
+            });
+
+            $('#login button').keypress(function(event) {
+                if (event.keyCode === 13) {
+                    login();
+                }
+            });
+
+            $('#register button').keypress(function(event) {
+                if (event.keyCode === 13) {
+                    register();
+                }
+            });
+
+            $('#messageInput').on('input', function() {
+                $('.join-item').removeClass('hidden');
+                if ($(this).val().trim() === '') {
+                    $('.join-item').addClass('hidden');
+                }
+            });
+
+            $('#chatSection').on('click', '.chat-bubble', function() {
+                const username = $(this).closest('.chat').find('.chat-header').text().trim();
+                appendSystemMessage(`You clicked on ${username}'s message`);
+            });
+        });
 
         async function login() {
-            const username = document.getElementById('loginUser').value.trim();
-            const password = document.getElementById('loginPass').value.trim();
+            const username = $('#loginUser').val().trim();
+            const password = $('#loginPass').val().trim();
             if (!username || !password) return;
 
-            try {
-                const response = await fetch('/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({ username, password })
-                });
+            $.ajax({
+                url: '/login',
+                type: 'POST',
+                data: { username, password },
+                success: async (response, status, xhr) => {
+                    if (xhr.status !== 200) throw new Error('Login failed');
 
-                if (!response.ok) throw new Error('Login failed');
-                
-                token = await response.text();
-                initializeChat();
-            } catch (error) {
-                alert(error.message);
-            }
+                    const data = $.parseJSON(response);
+                    token = data.token;
+                    initializeChat();
+                },
+                error: (jqXHR, status, error) => {
+                    alert(error);
+                }
+            });
         }
 
         async function register() {
-            const username = document.getElementById('regUser').value.trim();
-            const password = document.getElementById('regPass').value.trim();
+            const username = $('#regUser').val().trim();
+            const password = $('#regPass').val().trim();
             if (!username || !password) return;
 
-            try {
-                const response = await fetch('/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({ username, password })
-                });
-
-                if (!response.ok) {
-                    const error = await response.text();
-                    throw new Error(error);
+            $.ajax({
+                url: '/register',
+                type: 'POST',
+                data: { username, password },
+                success: (response, status, xhr) => {
+                    if (xhr.status !== 201) {
+                        const error = xhr.responseText;
+                        throw new Error(error);
+                    }
+                    alert('Registration successful! Please login.');
+                    showTab('login');
+                },
+                error: (jqXHR, status, error) => {
+                    alert(error);
                 }
-                
-                alert('Registration successful! Please login.');
-                showTab('login');
-            } catch (error) {
-                alert(error.message);
-            }
+            });
+        }
+
+        // show tab
+        function showTab(tabID) {
+            console.log(tabID);
+            // get all div with id login and register then iterate,
+            // if id == tabID, remove class hidden, else add class hidden
+            $('#login, #register').each(function() {
+                console.log($(this).attr('id'));
+                if ($(this).attr('id') === tabID) {
+                    $(this).removeClass('hidden');
+                } else {
+                    $(this).addClass('hidden');
+                }
+            });
         }
 
         function initializeChat() {
             ws = new WebSocket('ws://localhost:8080/ws');
-            
+
             ws.onopen = () => {
                 ws.send(JSON.stringify({
                     type: "auth",
                     token: token
                 }));
-                document.getElementById('authSection').classList.add('hidden');
-                document.getElementById('chatSection').classList.remove('hidden');
+                $('#authSection').addClass('hidden');
+                $('#chatSection').removeClass('hidden');
             };
 
             ws.onmessage = (e) => {
@@ -145,30 +192,34 @@
         }
 
         async function loadHistory(me) {
-            try {
-                const response = await fetch(`/messages?token=${encodeURIComponent(token)}`);
-                const messages = await response.json();
-                messages.forEach(msg => appendMessage(msg.username, msg.content, msg.username === me));
-            } catch (error) {
-                console.error('Failed to load history:', error);
-            }
+            $.ajax({
+                url: `/messages?token=${encodeURIComponent(token)}`,
+                type: 'GET',
+                success: (response, status, xhr) => {
+                    const messages = $.parseJSON(response);
+                    messages.forEach(msg => appendMessage(msg.username, msg.content, msg.username === me));
+                },
+                error: (jqXHR, status, error) => {
+                    console.error('Failed to load history:', error);
+                }
+            });
         }
 
         function sendMessage() {
-            const input = document.getElementById('messageInput');
-            const content = input.value.trim();
+            const input = $('#messageInput');
+            const content = input.val().trim();
             if (content && ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     type: "message",
                     content: content
                 }));
-                input.value = '';
+                input.val('');
             }
         }
 
         function appendMessage(username, content, isSelf) {
-            const messagesDiv = document.getElementById('messages');
-            messagesDiv.innerHTML += `
+            const messagesDiv = $('#messages');
+            messagesDiv.append(`
                 <div class="flex items-center gap-2 ${isSelf ? 'message-self' : 'message-other'}">
                     ${
                         isSelf ? 
@@ -185,18 +236,18 @@
                         </div>`
                     }
                 </div>
-            `;
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            `);
+            messagesDiv.scrollTop(messagesDiv[0].scrollHeight);
         }
 
         function appendSystemMessage(content) {
-            const messagesDiv = document.getElementById('messages');
-            messagesDiv.innerHTML += `
+            const messagesDiv = $('#messages');
+            messagesDiv.append(`
                 <div class="flex justify-center my-2">
                     <div class="text-sm text-gray-400 italic">${content}</div>
                 </div>
-            `;
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            `);
+            messagesDiv.scrollTop(messagesDiv[0].scrollHeight);
         }
     </script>
 </body>

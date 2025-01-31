@@ -29,7 +29,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write([]byte(token))
+	json.NewEncoder(w).Encode(map[string]string{"token": token})
 }
 
 func GetMessageHistories(w http.ResponseWriter, r *http.Request) {
