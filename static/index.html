@@ -40,7 +40,7 @@
                 <div class="join w-full">
                     <input type="text" id="messageInput" class="input input-bordered join-item flex-1" 
                            placeholder="Type a message" onkeypress="if(event.keyCode===13) sendMessage()">
-                    <button onclick="sendMessage()" class="btn btn-primary join-item">Send</button>
+                    <button id="sendMessageBtn" onclick="sendMessage()" class="btn btn-primary join-item">Send</button>
                 </div>
             </div>
         </div>
@@ -73,13 +73,6 @@
             $('#register button').keypress(function(event) {
                 if (event.keyCode === 13) {
                     register();
-                }
-            });
-
-            $('#messageInput').on('input', function() {
-                $('.join-item').removeClass('hidden');
-                if ($(this).val().trim() === '') {
-                    $('.join-item').addClass('hidden');
                 }
             });
 
