@@ -1,12 +1,14 @@
 package handler
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/pararang/medaitor/db"
+	"golang.org/x/sync/errgroup"
 )
 
 // wsClientConnection wraps websocket connection with a mutex for thread-safe writes
@@ -50,8 +52,6 @@ func WebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Println("auth", auth)
-
 	userID, username, err := db.ValidateSession(auth.Token)
 	if err != nil {
 		ws.WriteJSON(Message{Type: "auth_failed"})
@@ -81,14 +81,30 @@ func WebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if msg.Type == "message" && msg.Content != "" {
-			if err := db.StoreMessage(userID, msg.Content); err != nil {
-				log.Println("Message save error:", err)
-			}
-			broadcastMessage(Message{
-				Type:     "message",
-				Username: username,
-				Content:  msg.Content,
+			var wg errgroup.Group
+
+			wg.Go(func() error {
+				errSm := db.StoreMessage(userID, msg.Content)
+				if errSm != nil {
+					return fmt.Errorf("failed to store message: %w", errSm)
+				}
+
+				return nil
 			})
+
+			wg.Go(func() error {
+				broadcastMessage(Message{
+					Type:     "message",
+					Username: username,
+					Content:  msg.Content,
+				})
+
+				return nil
+			})
+
+			if err := wg.Wait(); err != nil {
+				log.Printf("failed processing message from %s: %v\n", username, err)
+			}
 		}
 	}
 }
@@ -99,6 +115,7 @@ func broadcastMessage(msg Message) {
 		identity := value.(Identity)
 		msg.IsSelf = identity.Username == msg.Username
 		if err := ws.WriteJSON(msg); err != nil {
+			log.Printf("failed broadcast message to %s: %v\n", identity.Username, err)
 			ws.Close()
 			clients.Delete(ws)
 		}
