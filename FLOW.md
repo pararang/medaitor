@@ -1,21 +1,5 @@
-# Userflow
-1. user open the website
-2. user has account?
-    - if user has account -> user login
-    - if user doesn't have account -> user register
-3. user login
-    - if user credentials invalid -> send {type: "auth_failed"} to client
-    - if user credentials valid
-        - send {type: "auth_success", username: "..."} to client
-        - broadcast {type: "user_join", username: "..."} to all clients
-4. retrieve history -> http GET /messages?token=...
-5. user send message -> http POST /messages?token=... {message: "..."}
-6. user leave/close the website
-    - broadcast {type: "user_leave", username: "..."} to all clients
-    - close the websocket connection
-
-## Diagram
-### WebSocket Connection
+# Diagram
+## Sequence Diagram for WebSocket Connection
 ```mermaid
     sequenceDiagram
         title WebSocket Connection
@@ -49,4 +33,86 @@
             Service->>Client: Broadcast {type: "user_leave", username: "..."}
             Service->>Service: Remove client from sync.Map
         end
+```
+
+## Flowchart for User Actions
+```mermaid
+flowchart TD
+    A[User] --> B{Action}
+    
+    B --> C[Registration]
+    C --> D[Frontend Form]
+    D --> E[AJAX POST /register]
+    E --> F[handler/rest.go Register]
+    F --> G[db.RegisterUser]
+    G --> H[SQLite: Store User]
+    H --> I[Response to Frontend]
+    
+    B --> J[Login]
+    J --> K[Frontend Form]
+    K --> L[AJAX POST /login]
+    L --> M[handler/rest.go Login]
+    M --> N[db.LoginUser]
+    N --> O[SQLite: Verify Credentials]
+    O --> P[Generate Session Token]
+    P --> Q[SQLite: Store Session]
+    Q --> R[Return Token to Frontend]
+    
+    B --> S[WebSocket Connection]
+    S --> T[Frontend WebSocket Request]
+    T --> U[handler/ws.go WebSocket Upgrade]
+    U --> V[Authenticate with Token]
+    V --> W[db.ValidateSession]
+    W --> X[SQLite: Validate Token]
+    X --> Y[Store Connection in Clients Map]
+    
+    B --> Z[Send Message]
+    Z --> AA[Frontend WebSocket Send]
+    AA --> AB[handler/ws.go Receive Message]
+    AB --> AC{Process Message}
+    AC --> AD[db.StoreMessage]
+    AD --> AE[SQLite: Store Message]
+    AC --> AF[broadcastMessage]
+    AF --> AG[Send to All Clients]
+    
+    B --> AH[Load History]
+    AH --> AI[Frontend AJAX GET /messages]
+    AI --> AJ[handler/rest.go GetMessageHistories]
+    AJ --> AK[db.GetMessageHistory]
+    AK --> AL[SQLite: Retrieve Messages]
+    AL --> AM[Return Messages to Frontend]
+    
+    B --> AN[User Presence]
+    AN --> AO[WebSocket Connect/Disconnect]
+    AO --> AP[Send user_join/user_leave]
+    AP --> AQ[broadcastMessage]
+    AQ --> AR[Notify All Clients]
+    
+    subgraph Database
+        direction TB
+        H
+        O
+        Q
+        X
+        AE
+        AL
+    end
+    
+    subgraph Backend
+        direction TB
+        F
+        M
+        U
+        AB
+        AJ
+    end
+    
+    subgraph Frontend
+        direction TB
+        D
+        K
+        T
+        AA
+        AI
+    end
 ```
